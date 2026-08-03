@@ -7,8 +7,8 @@ import ae2.api.networking.crafting.ICraftingLink;
 import ae2.api.networking.crafting.ICraftingPlan;
 import ae2.api.networking.crafting.ICraftingRequester;
 import ae2.api.networking.security.IActionSource;
-import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import ae2.api.stacks.KeyCounter;
 import ae2.api.storage.MEStorage;
@@ -19,8 +19,10 @@ import ae2.me.cluster.implementations.CraftingCPUCluster;
 import com.google.common.collect.ImmutableSet;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import net.minecraft.item.Item;
+import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.network.PacketBuffer;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
@@ -35,7 +37,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CraftingCpuLogicTest {
     private static final String NBT_PENDING_STANDALONE_OUTPUT = "pendingStandaloneOutput";
-    private static final AEKey OUTPUT = AEItemKey.of(new Item());
+    private static final AEKeyType TEST_TYPE = new AEKeyType(
+        new ResourceLocation("test", "crafting_cpu_output"),
+        TestKey.class,
+        new TextComponentString("test")) {
+        @Override
+        public AEKey readFromPacket(PacketBuffer input) {
+            return null;
+        }
+
+        @Override
+        public AEKey loadKeyFromTag(NBTTagCompound tag) {
+            return null;
+        }
+    };
+    private static final AEKey OUTPUT = new TestKey();
     private static final IActionSource SOURCE = IActionSource.empty();
 
     @Test
@@ -284,6 +300,54 @@ class CraftingCpuLogicTest {
 
         @Override
         public IGridNode getActionableNode() {
+            return null;
+        }
+    }
+
+    private static final class TestKey extends AEKey {
+        private static final Object PRIMARY_KEY = new Object();
+
+        @Override
+        public AEKeyType getType() {
+            return TEST_TYPE;
+        }
+
+        @Override
+        public AEKey dropSecondary() {
+            return this;
+        }
+
+        @Override
+        public NBTTagCompound toTag() {
+            return new NBTTagCompound();
+        }
+
+        @Override
+        public Object getPrimaryKey() {
+            return PRIMARY_KEY;
+        }
+
+        @Override
+        public ResourceLocation getId() {
+            return null;
+        }
+
+        @Override
+        public void writeToPacket(PacketBuffer data) {
+        }
+
+        @Override
+        public Object getReadOnlyStack() {
+            return null;
+        }
+
+        @Override
+        protected ITextComponent computeDisplayName() {
+            return new TextComponentString("test");
+        }
+
+        @Override
+        public NBTBase get(String componentId) {
             return null;
         }
     }
