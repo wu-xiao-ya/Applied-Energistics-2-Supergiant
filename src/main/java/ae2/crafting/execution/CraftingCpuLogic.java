@@ -32,6 +32,7 @@ import ae2.api.networking.security.IActionSource;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
 import ae2.api.stacks.KeyCounter;
+import ae2.api.storage.MEStorage;
 import ae2.core.AELog;
 import ae2.core.network.InitNetwork;
 import ae2.core.network.clientbound.CraftingJobStatusPacket;
@@ -603,27 +604,43 @@ public class CraftingCpuLogic {
         }
 
         var what = currentJob.finalOutput.what();
-        long amount = Math.min(pendingStandaloneOutput,
-            inventory.extract(what, pendingStandaloneOutput, Actionable.SIMULATE));
-        pendingStandaloneOutput = 0;
-        if (amount <= 0) {
-            cluster.markDirty();
-            return;
-        }
-
-        long inserted;
+        long previousPendingOutput = pendingStandaloneOutput;
         returningStandaloneOutput = true;
         try {
-            inserted = grid.getStorageService().getInventory().insert(
-                what, amount, Actionable.MODULATE, cluster.getSrc());
+            pendingStandaloneOutput = transferStandaloneOutput(
+                what,
+                pendingStandaloneOutput,
+                inventory,
+                grid.getStorageService().getInventory(),
+                cluster.getSrc());
         } finally {
             returningStandaloneOutput = false;
         }
 
-        if (inserted > 0) {
-            inventory.extract(what, inserted, Actionable.MODULATE);
+        if (pendingStandaloneOutput != previousPendingOutput) {
+            cluster.markDirty();
         }
-        cluster.markDirty();
+    }
+
+    static long transferStandaloneOutput(AEKey what, long pendingOutput, ListCraftingInventory inventory,
+                                         MEStorage storage, IActionSource source) {
+        if (pendingOutput <= 0) {
+            return 0;
+        }
+
+        long locallyAvailable = inventory.extract(what, pendingOutput, Actionable.SIMULATE);
+        long transferable = Math.min(pendingOutput, Math.max(0, locallyAvailable));
+        if (transferable <= 0) {
+            return 0;
+        }
+
+        long inserted = storage.insert(what, transferable, Actionable.MODULATE, source);
+        long accepted = Math.max(0, Math.min(transferable, inserted));
+        if (accepted > 0) {
+            inventory.extract(what, accepted, Actionable.MODULATE);
+        }
+
+        return transferable - accepted;
     }
 
     /**
