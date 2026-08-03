@@ -31,6 +31,7 @@ import ae2.core.definitions.AEBlocks;
 import ae2.helpers.IPriorityHost;
 import ae2.helpers.InterfaceLogic;
 import ae2.helpers.InterfaceLogicHost;
+import ae2.helpers.externalstorage.GenericStackItemStorage;
 import ae2.tile.grid.AENetworkedInvTile;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -39,6 +40,7 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.util.Constants;
+import net.minecraftforge.items.IItemHandler;
 
 import org.jetbrains.annotations.Nullable;
 import java.util.List;
@@ -65,6 +67,7 @@ public class TileInterface extends AENetworkedInvTile
     };
 
     private final InterfaceLogic logic = new InterfaceLogic(this.getMainNode(), this, AEBlocks.INTERFACE.item());
+    private final IItemHandler itemHandler = new GenericStackItemStorage(this.logic.getStorage());
     @Nullable
     private String cellTerminalSubnetId;
 
@@ -113,6 +116,11 @@ public class TileInterface extends AENetworkedInvTile
     @Override
     public InterfaceLogic getInterfaceLogic() {
         return this.logic;
+    }
+
+    @Override
+    public IItemHandler getExposedItemHandler(@Nullable EnumFacing side) {
+        return this.itemHandler;
     }
 
     @Override

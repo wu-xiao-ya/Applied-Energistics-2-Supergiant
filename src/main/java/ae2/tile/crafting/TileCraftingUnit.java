@@ -334,7 +334,7 @@ public class TileCraftingUnit extends AENetworkedTile
             this.world.setBlockState(this.pos, newState, 2);
         }
 
-        if (updateFormed) {
+        if (updateFormed && this.getMainNode().getNode() != null) {
             onGridConnectableSidesChanged();
         }
 
