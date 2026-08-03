@@ -9,7 +9,11 @@ import ae2.recipes.handlers.InscriberProcessType;
 import ae2.recipes.handlers.InscriberRecipe;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.crafting.Ingredient;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
 
 final class InscriberCraftingPush {
     private InscriberCraftingPush() {
@@ -17,46 +21,190 @@ final class InscriberCraftingPush {
 
     @Nullable
     static Plan plan(AEProcessingPattern pattern, KeyCounter[] inputs, State state, int parallelLimit,
-                     int maxMultiplier) {
-        if (maxMultiplier <= 0 || state.smash() || pattern.getSparseInputs().size() < 3
-            || pattern.getOutputs().size() != 1) {
+                     int providedInputMultiplier, int maxMultiplier) {
+        if (maxMultiplier <= 0 || state.smash() || pattern.getOutputs().size() != 1) {
             return null;
         }
 
-        ItemStack patternTop = toSingleItemStack(pattern.getSparseInputs().get(0));
-        ItemStack patternMiddle = toSingleItemStack(pattern.getSparseInputs().get(1));
-        ItemStack patternBottom = toSingleItemStack(pattern.getSparseInputs().get(2));
-        if (patternMiddle.isEmpty()) {
+        List<InscriberInputMatcher.Input<AEKey>> actualInputs = collectInputs(inputs);
+        if (actualInputs == null) {
             return null;
         }
 
-        ItemStack targetTop = state.top().isEmpty() ? patternTop : state.top();
-        ItemStack targetBottom = state.bottom().isEmpty() ? patternBottom : state.bottom();
-        InscriberRecipe recipe = InscriberRecipes.findRecipe(patternMiddle, targetTop, targetBottom, true);
+        Plan result = null;
+        for (InscriberRecipe recipe : InscriberRecipes.getRecipes()) {
+            if (!matchesOutput(pattern, recipe)) {
+                continue;
+            }
+
+            Plan candidate = planRecipe(pattern, recipe, actualInputs, state, parallelLimit, providedInputMultiplier,
+                maxMultiplier);
+            if (candidate == null) {
+                continue;
+            }
+            if (result != null) {
+                return null;
+            }
+            result = candidate;
+        }
+
+        Plan namePressPlan = planNamePressRecipe(pattern, actualInputs, state, parallelLimit,
+            providedInputMultiplier, maxMultiplier);
+        if (namePressPlan != null) {
+            if (result != null) {
+                return null;
+            }
+            result = namePressPlan;
+        }
+        return result;
+    }
+
+    @Nullable
+    private static Plan planRecipe(AEProcessingPattern pattern, InscriberRecipe recipe,
+                                   List<InscriberInputMatcher.Input<AEKey>> actualInputs,
+                                   State state, int parallelLimit, int providedInputMultiplier, int maxMultiplier) {
+        if (recipe.getProcessType() == InscriberProcessType.PRESS) {
+            if (!hasExactPatternInputAmount(pattern, 3)) {
+                return null;
+            }
+            return planPressRecipe(recipe, actualInputs, state, parallelLimit, providedInputMultiplier, maxMultiplier);
+        }
+        if (!hasExactPatternInputAmount(pattern, 1)) {
+            return null;
+        }
+        return planInscribeRecipe(recipe, actualInputs, state, parallelLimit, providedInputMultiplier, maxMultiplier);
+    }
+
+    @Nullable
+    private static Plan planNamePressRecipe(AEProcessingPattern pattern,
+                                            List<InscriberInputMatcher.Input<AEKey>> actualInputs,
+                                            State state, int parallelLimit, int providedInputMultiplier,
+                                            int maxMultiplier) {
+        if (!InscriberRecipes.isNamePress(state.top()) && !InscriberRecipes.isNamePress(state.bottom())) {
+            return null;
+        }
+        if (!hasExactPatternInputAmount(pattern, 1)) {
+            return null;
+        }
+
+        int inputMultiplier = resolveInputMultiplier(actualInputs, 1, providedInputMultiplier);
+        if (inputMultiplier <= 0) {
+            return null;
+        }
+
+        var roles = List.of(new InscriberInputMatcher.Role<AEKey>(
+            key -> key instanceof AEItemKey && canInsertInto(state.middle(), key)));
+        InscriberInputMatcher.Match<AEKey> match = InscriberInputMatcher.match(roles, actualInputs, inputMultiplier);
+        if (match == null) {
+            return null;
+        }
+
+        ItemStack middleStack = toSingleItemStack(match.assignment(0));
+        InscriberRecipe recipe = InscriberRecipes.findRecipe(middleStack, state.top(), state.bottom(), true);
         if (recipe == null || !matchesOutput(pattern, recipe)) {
             return null;
         }
 
-        boolean consumeOptional = recipe.getProcessType() == InscriberProcessType.PRESS;
-        SlotPlan top = optionalSlotPlan(state.top(), patternTop, consumeOptional);
-        SlotPlan middle = consumedSlotPlan(state.middle(), patternMiddle);
-        SlotPlan bottom = optionalSlotPlan(state.bottom(), patternBottom, consumeOptional);
-        if (top == null || middle == null || bottom == null) {
-            return null;
+        return finishPlan(recipe, state, parallelLimit, maxMultiplier,
+            existingSlotPlan(state.top()),
+            consumedSlotPlan(state.middle(), middleStack),
+            existingSlotPlan(state.bottom()));
+    }
+
+    @Nullable
+    private static Plan planInscribeRecipe(InscriberRecipe recipe,
+                                           List<InscriberInputMatcher.Input<AEKey>> actualInputs,
+                                           State state, int parallelLimit, int providedInputMultiplier,
+                                           int maxMultiplier) {
+        boolean toolsMatch = optionalIngredientMatches(recipe.getTopOptional(), state.top())
+            && optionalIngredientMatches(recipe.getBottomOptional(), state.bottom());
+        if (!toolsMatch) {
+            toolsMatch = optionalIngredientMatches(recipe.getTopOptional(), state.bottom())
+                && optionalIngredientMatches(recipe.getBottomOptional(), state.top());
         }
-        if (!matchesInputs(top, middle, bottom, inputs)) {
+        if (!toolsMatch) {
             return null;
         }
 
-        int maxRuns = Math.min(maxMultiplier, parallelLimit);
-        maxRuns = Math.min(maxRuns, middle.maxRuns(state.inputCapacity()));
-        if (consumeOptional) {
-            maxRuns = Math.min(maxRuns, top.maxRuns(state.inputCapacity()));
-            maxRuns = Math.min(maxRuns, bottom.maxRuns(state.inputCapacity()));
-        } else if (top.installsTool() || bottom.installsTool()) {
-            maxRuns = Math.min(maxRuns, 1);
+        int inputMultiplier = resolveInputMultiplier(actualInputs, 1, providedInputMultiplier);
+        if (inputMultiplier <= 0) {
+            return null;
         }
-        maxRuns = Math.min(maxRuns, outputRuns(state.output(), recipe.getResultItem()));
+
+        var roles = List.of(new InscriberInputMatcher.Role<AEKey>(
+            key -> ingredientMatches(recipe.getMiddleInput(), key) && canInsertInto(state.middle(), key)));
+        InscriberInputMatcher.Match<AEKey> match = InscriberInputMatcher.match(roles, actualInputs, inputMultiplier);
+        if (match == null) {
+            return null;
+        }
+
+        SlotPlan top = existingSlotPlan(state.top());
+        SlotPlan middle = consumedSlotPlan(state.middle(), toSingleItemStack(match.assignment(0)));
+        SlotPlan bottom = existingSlotPlan(state.bottom());
+        return finishPlan(recipe, state, parallelLimit, maxMultiplier, top, middle, bottom);
+    }
+
+    @Nullable
+    private static Plan planPressRecipe(InscriberRecipe recipe,
+                                        List<InscriberInputMatcher.Input<AEKey>> actualInputs,
+                                        State state, int parallelLimit, int providedInputMultiplier,
+                                        int maxMultiplier) {
+        if (recipe.getTopOptional() == Ingredient.EMPTY || recipe.getBottomOptional() == Ingredient.EMPTY) {
+            return null;
+        }
+
+        Plan direct = planPressOrientation(recipe, recipe.getTopOptional(), recipe.getBottomOptional(), actualInputs,
+            state, parallelLimit, providedInputMultiplier, maxMultiplier);
+        if (direct != null) {
+            return direct;
+        }
+        return planPressOrientation(recipe, recipe.getBottomOptional(), recipe.getTopOptional(), actualInputs,
+            state, parallelLimit, providedInputMultiplier, maxMultiplier);
+    }
+
+    @Nullable
+    private static Plan planPressOrientation(InscriberRecipe recipe, Ingredient physicalTop,
+                                             Ingredient physicalBottom,
+                                             List<InscriberInputMatcher.Input<AEKey>> actualInputs,
+                                             State state, int parallelLimit, int providedInputMultiplier,
+                                             int maxMultiplier) {
+        int inputMultiplier = resolveInputMultiplier(actualInputs, 3, providedInputMultiplier);
+        if (inputMultiplier <= 0) {
+            return null;
+        }
+
+        var roles = List.of(
+            new InscriberInputMatcher.Role<AEKey>(
+                key -> ingredientMatches(physicalTop, key) && canInsertInto(state.top(), key)),
+            new InscriberInputMatcher.Role<AEKey>(
+                key -> ingredientMatches(recipe.getMiddleInput(), key) && canInsertInto(state.middle(), key)),
+            new InscriberInputMatcher.Role<AEKey>(
+                key -> ingredientMatches(physicalBottom, key) && canInsertInto(state.bottom(), key)));
+        InscriberInputMatcher.Match<AEKey> match = InscriberInputMatcher.match(roles, actualInputs, inputMultiplier);
+        if (match == null) {
+            return null;
+        }
+
+        SlotPlan top = consumedSlotPlan(state.top(), toSingleItemStack(match.assignment(0)));
+        SlotPlan middle = consumedSlotPlan(state.middle(), toSingleItemStack(match.assignment(1)));
+        SlotPlan bottom = consumedSlotPlan(state.bottom(), toSingleItemStack(match.assignment(2)));
+        return finishPlan(recipe, state, parallelLimit, maxMultiplier, top, middle, bottom);
+    }
+
+    @Nullable
+    private static Plan finishPlan(InscriberRecipe recipe, State state, int parallelLimit, int maxMultiplier,
+                                   SlotPlan top, SlotPlan middle, SlotPlan bottom) {
+        if (top == null || middle == null || bottom == null) {
+            return null;
+        }
+
+        int maxRuns = InscriberPushCapacity.maxRuns(
+            maxMultiplier,
+            parallelLimit,
+            outputRuns(state.output(), recipe.getResultItem()),
+            top.availableRuns(state.inputCapacity()),
+            middle.availableRuns(state.inputCapacity()),
+            bottom.availableRuns(state.inputCapacity()));
         if (maxRuns <= 0) {
             return null;
         }
@@ -83,16 +231,8 @@ final class InscriberCraftingPush {
         return new SlotPlan(patternStack, true, true, current.isEmpty() ? 0 : current.getCount());
     }
 
-    @Nullable
-    private static SlotPlan optionalSlotPlan(ItemStack current, ItemStack patternStack, boolean consumeOptional) {
-        if (patternStack.isEmpty()) {
-            return current.isEmpty() ? SlotPlan.empty() : new SlotPlan(current, false, false, current.getCount());
-        }
-        if (!current.isEmpty() && !canStack(current, patternStack)) {
-            return null;
-        }
-        return new SlotPlan(patternStack, consumeOptional, consumeOptional || current.isEmpty(),
-            current.isEmpty() ? 0 : current.getCount());
+    private static SlotPlan existingSlotPlan(ItemStack current) {
+        return current.isEmpty() ? SlotPlan.empty() : new SlotPlan(current, false, false, current.getCount());
     }
 
     private static int outputRuns(ItemStack currentOutput, ItemStack recipeOutput) {
@@ -108,44 +248,66 @@ final class InscriberCraftingPush {
         return (currentOutput.getMaxStackSize() - currentOutput.getCount()) / recipeOutput.getCount();
     }
 
-    private static boolean matchesInputs(SlotPlan top, SlotPlan middle, SlotPlan bottom, KeyCounter[] inputs) {
-        KeyCounter expected = new KeyCounter();
-        addExpectedInput(expected, top);
-        addExpectedInput(expected, middle);
-        addExpectedInput(expected, bottom);
-
+    @Nullable
+    private static List<InscriberInputMatcher.Input<AEKey>> collectInputs(KeyCounter[] inputs) {
         KeyCounter actual = new KeyCounter();
         for (KeyCounter input : inputs) {
+            if (input == null) {
+                return null;
+            }
             actual.addAll(input);
         }
-        for (Object2LongMap.Entry<AEKey> entry : expected) {
-            if (actual.get(entry.getKey()) < entry.getLongValue()) {
-                return false;
+
+        List<InscriberInputMatcher.Input<AEKey>> result = new ArrayList<>();
+        for (Object2LongMap.Entry<AEKey> entry : actual) {
+            if (entry.getLongValue() < 0) {
+                return null;
             }
-            actual.remove(entry.getKey(), entry.getLongValue());
+            if (entry.getLongValue() > 0) {
+                result.add(new InscriberInputMatcher.Input<>(entry.getKey(), entry.getLongValue()));
+            }
         }
-        return actual.isEmpty();
+        return result;
     }
 
-    private static void addExpectedInput(KeyCounter expected, SlotPlan slotPlan) {
-        if (!slotPlan.insertRequired() || slotPlan.stack.isEmpty()) {
-            return;
+    private static int resolveInputMultiplier(List<InscriberInputMatcher.Input<AEKey>> actualInputs,
+                                              int inputsPerRecipe, int providedInputMultiplier) {
+        if (providedInputMultiplier > 0) {
+            return providedInputMultiplier;
         }
-        AEItemKey key = AEItemKey.of(slotPlan.stack);
-        if (key != null) {
-            expected.add(key, 1);
+        return InscriberInputMatcher.inferMultiplier(actualInputs, inputsPerRecipe);
+    }
+
+    private static boolean hasExactPatternInputAmount(AEProcessingPattern pattern, long expectedAmount) {
+        long actualAmount = 0;
+        for (var input : pattern.getInputs()) {
+            long amount = input.getMultiplier();
+            if (amount <= 0 || Long.MAX_VALUE - actualAmount < amount) {
+                return false;
+            }
+            actualAmount += amount;
         }
+        return actualAmount == expectedAmount;
+    }
+
+    private static boolean optionalIngredientMatches(Ingredient ingredient, ItemStack stack) {
+        return ingredient == Ingredient.EMPTY ? stack.isEmpty() : ingredient.apply(stack);
+    }
+
+    private static boolean ingredientMatches(Ingredient ingredient, AEKey key) {
+        return key instanceof AEItemKey itemKey && ingredient.apply(itemKey.toStack());
+    }
+
+    private static boolean canInsertInto(ItemStack current, AEKey key) {
+        return key instanceof AEItemKey itemKey && (current.isEmpty() || canStack(current, itemKey.toStack()));
     }
 
     private static boolean canStack(ItemStack current, ItemStack incoming) {
         return ItemStack.areItemsEqual(current, incoming) && ItemStack.areItemStackTagsEqual(current, incoming);
     }
 
-    private static ItemStack toSingleItemStack(@Nullable GenericStack stack) {
-        if (stack == null) {
-            return ItemStack.EMPTY;
-        }
-        if (!(stack.what() instanceof AEItemKey itemKey) || stack.amount() != 1) {
+    private static ItemStack toSingleItemStack(AEKey key) {
+        if (!(key instanceof AEItemKey itemKey)) {
             return ItemStack.EMPTY;
         }
         return itemKey.toStack();
@@ -163,15 +325,11 @@ final class InscriberCraftingPush {
             return new SlotPlan(ItemStack.EMPTY, false, false, 0);
         }
 
-        boolean installsTool() {
-            return this.insertRequired && !this.consumed && !this.stack.isEmpty();
-        }
-
-        int maxRuns(int capacity) {
-            if (this.stack.isEmpty()) {
-                return Integer.MAX_VALUE;
+        int availableRuns(int inputCapacity) {
+            if (!this.consumed || this.stack.isEmpty()) {
+                return -1;
             }
-            return this.consumed ? Math.max(0, capacity - this.currentAmount) : 1;
+            return Math.max(0, Math.min(inputCapacity, this.stack.getMaxStackSize()) - this.currentAmount);
         }
 
         ItemStack stackForRuns(int runs) {
@@ -179,7 +337,7 @@ final class InscriberCraftingPush {
                 return ItemStack.EMPTY;
             }
             ItemStack result = this.stack.copy();
-            result.setCount(this.consumed ? runs : 1);
+            result.setCount(runs);
             return result;
         }
     }

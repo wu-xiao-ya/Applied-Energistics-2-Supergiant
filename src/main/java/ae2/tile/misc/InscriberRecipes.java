@@ -88,7 +88,7 @@ public final class InscriberRecipes {
         return false;
     }
 
-    private static boolean isNamePress(ItemStack stack) {
+    static boolean isNamePress(ItemStack stack) {
         ResourceLocation name = stack.isEmpty() ? null : stack.getItem().getRegistryName();
         return name != null && name.equals(AEItemIds.NAME_PRESS);
     }

@@ -432,7 +432,7 @@ public class TileInscriber extends AENetworkedPoweredTile
         if (!(patternDetails instanceof AEProcessingPattern processingPattern) || multiplier <= 0) {
             return false;
         }
-        InscriberCraftingPush.Plan plan = createCraftingPushPlan(processingPattern, inputs, multiplier);
+        InscriberCraftingPush.Plan plan = createCraftingPushPlan(processingPattern, inputs, multiplier, multiplier);
         if (plan == null || plan.maxMultiplier() < multiplier) {
             return false;
         }
@@ -453,7 +453,7 @@ public class TileInscriber extends AENetworkedPoweredTile
         if (!(patternDetails instanceof AEProcessingPattern processingPattern)) {
             return 0;
         }
-        InscriberCraftingPush.Plan plan = createCraftingPushPlan(processingPattern, inputs, maxMultiplier);
+        InscriberCraftingPush.Plan plan = createCraftingPushPlan(processingPattern, inputs, 0, maxMultiplier);
         return plan == null ? 0 : plan.maxMultiplier();
     }
 
@@ -463,14 +463,14 @@ public class TileInscriber extends AENetworkedPoweredTile
     }
 
     private InscriberCraftingPush.Plan createCraftingPushPlan(AEProcessingPattern pattern, KeyCounter[] inputs,
-                                                              int maxMultiplier) {
+                                                              int providedInputMultiplier, int maxMultiplier) {
         return InscriberCraftingPush.plan(pattern, inputs, new InscriberCraftingPush.State(
             this.topItemHandler.getStackInSlot(0),
             this.sideItemHandler.getStackInSlot(0),
             this.bottomItemHandler.getStackInSlot(0),
             this.sideItemHandler.getStackInSlot(1),
             this.configManager.getSetting(Settings.INSCRIBER_INPUT_CAPACITY).capacity,
-            this.smash), this.getParallelLimit(), maxMultiplier);
+            this.smash), this.getParallelLimit(), providedInputMultiplier, maxMultiplier);
     }
 
     private void insertPlannedStack(AppEngInternalInventory inventory, InscriberCraftingPush.SlotPlan slotPlan,
