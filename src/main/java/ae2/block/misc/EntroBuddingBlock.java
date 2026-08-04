@@ -69,7 +69,7 @@ public class EntroBuddingBlock extends AEBaseBlock {
 
         world.setBlockState(targetPos, newCluster.getDefaultState().withProperty(BlockDirectional.FACING, direction), 3);
 
-        if (rand.nextInt(DECAY_CHANCE) == 0) {
+        if (this.stage.canDecay() && rand.nextInt(DECAY_CHANCE) == 0) {
             world.setBlockState(pos, this.stage.getDecayedBlock().getDefaultState(), 3);
         }
     }
@@ -98,30 +98,40 @@ public class EntroBuddingBlock extends AEBaseBlock {
     }
 
     public enum Stage {
-        FULLY {
+        FULLY(false) {
             @Override
             Block getDecayedBlock() {
                 return AEBlocks.ENTRO_BUDDING_MOSTLY.block();
             }
         },
-        MOSTLY {
+        MOSTLY(true) {
             @Override
             Block getDecayedBlock() {
                 return AEBlocks.ENTRO_BUDDING_HALF.block();
             }
         },
-        HALF {
+        HALF(true) {
             @Override
             Block getDecayedBlock() {
                 return AEBlocks.ENTRO_BUDDING_HARDLY.block();
             }
         },
-        HARDLY {
+        HARDLY(true) {
             @Override
             Block getDecayedBlock() {
                 return AEBlocks.QUARTZ_BLOCK.block();
             }
         };
+
+        private final boolean canDecay;
+
+        Stage(boolean canDecay) {
+            this.canDecay = canDecay;
+        }
+
+        boolean canDecay() {
+            return this.canDecay;
+        }
 
         abstract Block getDecayedBlock();
     }
