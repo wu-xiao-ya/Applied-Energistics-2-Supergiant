@@ -43,6 +43,26 @@ public record PatternContainerGroup(
     private static final int MAX_TOOLTIP_LINES = 256;
     private static final Set<Block> PICK_BLOCK_FAILURES = Collections.newSetFromMap(new IdentityHashMap<>());
 
+    public PatternContainerGroup {
+        if (name == null && icon != null) {
+            name = icon.getDisplayName();
+        }
+        if (name == null) {
+            name = GuiText.Nothing.text();
+        }
+        if (tooltip == null) {
+            tooltip = Collections.emptyList();
+        } else if (tooltip.contains(null)) {
+            ObjectList<ITextComponent> sanitizedTooltip = new ObjectArrayList<>(tooltip.size());
+            for (ITextComponent component : tooltip) {
+                if (component != null) {
+                    sanitizedTooltip.add(component);
+                }
+            }
+            tooltip = sanitizedTooltip;
+        }
+    }
+
     public static PatternContainerGroup nothing() {
         return NOTHING;
     }
@@ -96,6 +116,9 @@ public record PatternContainerGroup(
                 name = TextComponentItemStack.of(aePart.getPartItem().asItemStack());
             } else if (part instanceof IWorldNameable nameable) {
                 name = nameable.getDisplayName();
+                if (name == null) {
+                    name = icon.getDisplayName();
+                }
             } else {
                 name = icon.getDisplayName();
             }
@@ -105,16 +128,26 @@ public record PatternContainerGroup(
 
             if (target instanceof IWorldNameable nameable && nameable.hasCustomName()) {
                 name = nameable.getDisplayName();
-            } else {
-                if (!targetItem.isEmpty()) {
-                    name = TextComponentItemStack.of(targetItem);
-                } else {
-                    name = new TextComponentTranslation(target.getBlockType().getTranslationKey() + ".name");
+                if (name == null) {
+                    name = getDefaultTargetName(target, targetItem);
                 }
+            } else {
+                name = getDefaultTargetName(target, targetItem);
             }
         }
 
         return new PatternContainerGroup(icon, name, tooltip);
+    }
+
+    private static ITextComponent getDefaultTargetName(TileEntity target, ItemStack targetItem) {
+        if (!targetItem.isEmpty()) {
+            return TextComponentItemStack.of(targetItem);
+        }
+        Block block = target.getBlockType();
+        if (block != null) {
+            return new TextComponentTranslation(block.getTranslationKey() + ".name");
+        }
+        return GuiText.Nothing.text();
     }
 
     private static ItemStack getTargetDisplayStack(World level, BlockPos pos, EnumFacing side) {
