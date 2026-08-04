@@ -222,8 +222,11 @@ public class TileInscriber extends AENetworkedPoweredTile
     @Override
     public void onChangeInventory(AppEngInternalInventory inv, int slot) {
         if (inv == this.topItemHandler || inv == this.bottomItemHandler || inv == this.sideItemHandler && slot == 0) {
-            this.processingTime = 0;
-            this.cachedTask = null;
+            InscriberRecipe previousTask = this.cachedTask;
+            if (previousTask == null || !isSameTaskStillValid(previousTask)) {
+                this.processingTime = 0;
+                this.cachedTask = null;
+            }
         }
 
         if (!this.smash) {
@@ -411,6 +414,13 @@ public class TileInscriber extends AENetworkedPoweredTile
         return this.cachedTask;
     }
 
+    private boolean isSameTaskStillValid(InscriberRecipe previousTask) {
+        ItemStack top = this.topItemHandler.getStackInSlot(0);
+        ItemStack middle = this.sideItemHandler.getStackInSlot(0);
+        ItemStack bottom = this.bottomItemHandler.getStackInSlot(0);
+        return previousTask.matches(top, middle, bottom) || previousTask.matches(bottom, middle, top);
+    }
+
     private int getParallelLimit() {
         return switch (this.upgrades.getInstalledUpgrades(AEItems.PARALLEL_CARD.item())) {
             case 1 -> 4;
@@ -440,8 +450,6 @@ public class TileInscriber extends AENetworkedPoweredTile
         insertPlannedStack(this.topItemHandler, plan.top(), multiplier);
         insertPlannedStack(this.sideItemHandler, plan.middle(), multiplier);
         insertPlannedStack(this.bottomItemHandler, plan.bottom(), multiplier);
-        this.cachedTask = null;
-        this.processingTime = 0;
         this.saveChanges();
         this.getMainNode().ifPresent((grid, node) -> grid.getTickManager().wakeDevice(node));
         return true;
