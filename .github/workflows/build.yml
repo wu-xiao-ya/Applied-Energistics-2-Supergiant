@@ -35,7 +35,29 @@ jobs:
         echo "Build version: ${previous_tag}+${short_hash}"
     - name: Execute Gradle build
       run: ./gradlew build -x spotlessCheck -Pmod_version="${MOD_VERSION}"
-        
+
+    - name: Verify runtime jar contents
+      run: |
+        set -euo pipefail
+
+        runtime_jar="$(find build/libs -maxdepth 1 -type f \
+          -name 'AppliedEnergistics2-Supergiant-*.jar' \
+          ! -name '*-dev.jar' \
+          ! -name '*-sources.jar' \
+          ! -name '*-javadoc.jar' \
+          -print -quit)"
+        test -n "${runtime_jar}"
+
+        jar_entries="$(unzip -Z1 "${runtime_jar}")"
+        for required_class in \
+          ae2/container/slot/CraftingMatrixSlot.class \
+          ae2/util/MeteoriteCompassSearch.class \
+          ae2/block/storage/DriveBlock.class \
+          ae2/block/misc/EntroBuddingBlock.class
+        do
+          grep -Fx "${required_class}" <<<"${jar_entries}"
+        done
+
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v7
       with:

@@ -69,9 +69,18 @@ public class EntroBuddingBlock extends AEBaseBlock {
 
         world.setBlockState(targetPos, newCluster.getDefaultState().withProperty(BlockDirectional.FACING, direction), 3);
 
-        if (this.stage.canDecay() && rand.nextInt(DECAY_CHANCE) == 0) {
+        // Keep the fully entroized registered block stable even if a transformer redirects the Stage enum.
+        if (this.canDecay() && rand.nextInt(DECAY_CHANCE) == 0) {
             world.setBlockState(pos, this.stage.getDecayedBlock().getDefaultState(), 3);
         }
+    }
+
+    private boolean canDecay() {
+        return canDecay(this.stage, this == AEBlocks.ENTRO_BUDDING_FULLY.block());
+    }
+
+    static boolean canDecay(Stage stage, boolean fullyRegisteredBlock) {
+        return !fullyRegisteredBlock && stage.canDecay();
     }
 
     @Override

@@ -9,6 +9,12 @@ class EntroBuddingBlockTest {
     @Test
     void fullyEntroizedStageIsStable() {
         assertFalse(EntroBuddingBlock.Stage.FULLY.canDecay());
+        assertFalse(EntroBuddingBlock.canDecay(EntroBuddingBlock.Stage.FULLY, false));
+    }
+
+    @Test
+    void registeredFullyEntroizedBlockIsStableEvenIfStageMetadataIsRedirected() {
+        assertFalse(EntroBuddingBlock.canDecay(EntroBuddingBlock.Stage.MOSTLY, true));
     }
 
     @Test
@@ -16,5 +22,6 @@ class EntroBuddingBlockTest {
         assertTrue(EntroBuddingBlock.Stage.MOSTLY.canDecay());
         assertTrue(EntroBuddingBlock.Stage.HALF.canDecay());
         assertTrue(EntroBuddingBlock.Stage.HARDLY.canDecay());
+        assertTrue(EntroBuddingBlock.canDecay(EntroBuddingBlock.Stage.MOSTLY, false));
     }
 }
