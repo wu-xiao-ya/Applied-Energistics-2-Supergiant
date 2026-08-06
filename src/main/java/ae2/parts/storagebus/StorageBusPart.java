@@ -566,6 +566,8 @@ public class StorageBusPart extends UpgradeablePart
         private Thread delegateThread;
         private boolean cacheDirty = true;
         private boolean cacheInitialized;
+        private boolean refreshingTarget;
+        private boolean recursiveRefreshWarningLogged;
         private boolean processingDelegateCallback;
         private boolean dispatchingListeners;
         private boolean dispatchingListUpdate;
@@ -627,6 +629,9 @@ public class StorageBusPart extends UpgradeablePart
 
         @Override
         public void getAvailableStacks(KeyCounter out) {
+            if (this.refreshingTarget) {
+                return;
+            }
             ensureCache();
             for (var entry : this.targetCache) {
                 if (entry.getLongValue() > 0 && isVisibleInAvailableStacks(entry.getKey())) {
@@ -711,19 +716,33 @@ public class StorageBusPart extends UpgradeablePart
         }
 
         private boolean refreshTarget(boolean publishChanges) {
-            this.targetScratch.reset();
-            getDelegate().getAvailableStacks(this.targetScratch);
-            this.targetScratch.removeZeros();
-            boolean changed = hasDifference(this.targetCache, this.targetScratch);
-            if (publishChanges) {
-                publishReplacement(this.targetCache, this.targetScratch);
+            if (this.refreshingTarget) {
+                if (!this.recursiveRefreshWarningLogged) {
+                    this.recursiveRefreshWarningLogged = true;
+                    AELog.warn("Detected recursive ME storage bus cache refresh for delegate %s; ignoring the recursive "
+                        + "contribution to avoid a server crash.", getDelegate().getClass().getName());
+                }
+                return false;
             }
-            var previous = this.targetCache;
-            this.targetCache = this.targetScratch;
-            this.targetScratch = previous;
-            this.cacheInitialized = true;
-            this.cacheDirty = false;
-            return changed;
+
+            this.refreshingTarget = true;
+            try {
+                this.targetScratch.reset();
+                getDelegate().getAvailableStacks(this.targetScratch);
+                this.targetScratch.removeZeros();
+                boolean changed = hasDifference(this.targetCache, this.targetScratch);
+                if (publishChanges) {
+                    publishReplacement(this.targetCache, this.targetScratch);
+                }
+                var previous = this.targetCache;
+                this.targetCache = this.targetScratch;
+                this.targetScratch = previous;
+                this.cacheInitialized = true;
+                this.cacheDirty = false;
+                return changed;
+            } finally {
+                this.refreshingTarget = false;
+            }
         }
 
         private boolean hasDifference(KeyCounter previous, KeyCounter replacement) {
