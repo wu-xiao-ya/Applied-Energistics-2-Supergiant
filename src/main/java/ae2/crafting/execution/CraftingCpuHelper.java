@@ -36,6 +36,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
+import java.util.ArrayList;
 import java.util.UUID;
 
 /**
@@ -297,7 +298,11 @@ public class CraftingCpuHelper {
                     }
 
                     fuzzyAmount = stack.amount();
-                    fuzzyIterator = inv.findFuzzyTemplates(stack.what()).iterator();
+                    var fuzzySnapshot = new ArrayList<AEKey>();
+                    for (var fuzzyTemplate : inv.findFuzzyTemplates(stack.what())) {
+                        fuzzySnapshot.add(fuzzyTemplate);
+                    }
+                    fuzzyIterator = fuzzySnapshot.iterator();
                     return true;
                 }
                 return false;
