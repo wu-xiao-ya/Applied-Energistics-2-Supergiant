@@ -144,8 +144,11 @@ public class PathingCalculation {
     private void processQueue(Queue<IPathItem> oldOpen, int queueIndex) {
         while (!oldOpen.isEmpty()) {
             IPathItem i = oldOpen.poll();
+            if (!isValidPathItem(i)) {
+                continue;
+            }
             for (IPathItem pi : i.getPossibleOptions()) {
-                if (!this.visited.contains(pi)) {
+                if (isValidPathItem(pi) && !this.visited.contains(pi)) {
                     // Set BFS parent.
                     pi.setControllerRoute(i);
 
@@ -181,6 +184,16 @@ public class PathingCalculation {
                 }
             }
         }
+    }
+
+    private boolean isValidPathItem(IPathItem pathItem) {
+        if (pathItem instanceof GridNode node) {
+            return node.isReadyForPathing(this.grid);
+        }
+        if (pathItem instanceof GridConnection connection) {
+            return connection.a().isReadyForPathing(this.grid) && connection.b().isReadyForPathing(this.grid);
+        }
+        return true;
     }
 
     /**
@@ -226,7 +239,7 @@ public class PathingCalculation {
             controllerNodes.add((IPathItem) node);
             for (var gcc : node.getConnections()) {
                 var gc = (GridConnection) gcc;
-                if (!(gc.getOtherSide(node).getOwner() instanceof TileController)) {
+                if (isValidPathItem(gc) && !(gc.getOtherSide(node).getOwner() instanceof TileController)) {
                     stack.add(gc);
                 }
             }
@@ -253,7 +266,7 @@ public class PathingCalculation {
                     // The neighbor could either be: a child, the parent, or in a different tree if it is closer to
                     // another controller. It is a child if we are its parent.
                     // We need to exclude controller nodes because their getControllerRoute() is nonsense.
-                    if (!controllerNodes.contains(pi) && pi.getControllerRoute() == current) {
+                    if (isValidPathItem(pi) && !controllerNodes.contains(pi) && pi.getControllerRoute() == current) {
                         stack.add(pi);
                     }
                 }

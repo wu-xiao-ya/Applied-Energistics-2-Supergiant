@@ -258,6 +258,10 @@ public class GridNode implements IGridNode, IPathItem, IDebugExportable {
         return this.myGrid;
     }
 
+    public boolean isReadyForPathing(IGrid grid) {
+        return this.ready && this.myGrid == grid;
+    }
+
     void setGrid(Grid grid) {
         if (this.myGrid == grid) {
             return;
@@ -638,7 +642,13 @@ public class GridNode implements IGridNode, IPathItem, IDebugExportable {
             return 0;
         }
 
-        var channelMode = myGrid.getPathingService().getChannelMode();
+        var grid = this.myGrid;
+        if (grid == null) {
+            LOG.warn("Skipping max-channel lookup for grid node {} because it is no longer attached to a grid.", this);
+            return 0;
+        }
+
+        var channelMode = grid.getPathingService().getChannelMode();
         if (channelMode == ChannelMode.INFINITE) {
             return Integer.MAX_VALUE;
         }
